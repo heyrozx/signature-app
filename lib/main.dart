@@ -1,10 +1,14 @@
+import 'dart:io';
+import 'dart:math';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_signature_view/flutter_signature_view.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:simple_signature/result_signature.dart';
 
 void main() {
@@ -15,7 +19,7 @@ void main() {
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({Key? key}) : super(key: key);
+  const MyApp({super.key});
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -35,7 +39,7 @@ class MyApp extends StatelessWidget {
 enum StatusAd { initial, loaded }
 
 class MyHomePage extends StatefulWidget {
-  const MyHomePage({Key? key}) : super(key: key);
+  const MyHomePage({super.key});
 
   @override
   State<MyHomePage> createState() => _MyHomePageState();
@@ -47,36 +51,10 @@ class _MyHomePageState extends State<MyHomePage> {
   double strokeWith = 3.0;
   StrokeCap strokeCap = StrokeCap.round;
 
-  BannerAd? myBanner;
-
-  StatusAd statusAd = StatusAd.initial;
-
-  BannerAdListener listener() => BannerAdListener(
-        // Called when an ad is successfully received.
-        onAdLoaded: (Ad ad) {
-          if (kDebugMode) {
-            print('Ad Loaded.');
-          }
-          setState(() {
-            statusAd = StatusAd.loaded;
-          });
-        },
-      );
-
   SignatureView? _signatureView;
 
   @override
   void initState() {
-    myBanner = BannerAd(
-      adUnitId: kDebugMode
-          ? 'ca-app-pub-3940256099942544/6300978111'
-          : 'ca-app-pub-2465007971338713/1087521621',
-      size: AdSize.banner,
-      request: const AdRequest(),
-      listener: listener(),
-    );
-    myBanner!.load();
-
     refreshCanvas();
 
     super.initState();
@@ -96,20 +74,37 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   @override
-  void dispose() {
-    myBanner!.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text('Signature',
             style: GoogleFonts.pacifico(color: Colors.black, fontSize: 23)),
         elevation: 0.5,
+        surfaceTintColor: Colors.white,
         backgroundColor: Colors.white,
         actions: [
+          IconButton(
+              onPressed: () async {
+                Uint8List? data = await _signatureView!.exportBytes();
+                Random random = Random();
+                int randomNumber = random.nextInt(10000);
+
+                Directory tempDir = await getTemporaryDirectory();
+                String tempPath = tempDir.path;
+
+                File file = File('$tempPath/signature-$randomNumber.png');
+                await file.writeAsBytes(data!);
+                await SharePlus.instance.share(
+                  ShareParams(
+                      previewThumbnail: XFile(file.path),
+                      files: [XFile(file.path)],
+                      text: 'Here is my signature!'),
+                );
+              },
+              icon: const Icon(
+                Icons.share,
+                color: Colors.black,
+              )),
           IconButton(
               onPressed: () {
                 _updateBrushDialog();
@@ -123,15 +118,6 @@ class _MyHomePageState extends State<MyHomePage> {
       backgroundColor: Colors.white,
       body: Column(
         children: [
-          statusAd == StatusAd.loaded
-              ? Container(
-                  margin: const EdgeInsets.only(top: 10, left: 10, right: 10),
-                  alignment: Alignment.center,
-                  width: myBanner!.size.width.toDouble(),
-                  height: myBanner!.size.height.toDouble(),
-                  child: AdWidget(ad: myBanner!),
-                )
-              : Container(),
           Expanded(
             child: Container(
               child: _signatureView,
@@ -154,6 +140,7 @@ class _MyHomePageState extends State<MyHomePage> {
                       Fluttertoast.showToast(msg: 'Your signature is empty');
                       return;
                     }
+
                     Uint8List? data = await _signatureView!.exportBytes();
                     // ignore: use_build_context_synchronously
                     Navigator.push(context,
@@ -203,7 +190,11 @@ class _MyHomePageState extends State<MyHomePage> {
             child: ListBody(
               children: <Widget>[
                 Container(
-                  color: penColor == Colors.black ? Colors.grey.shade100 : null,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    color:
+                        penColor == Colors.black ? Colors.grey.shade100 : null,
+                  ),
                   child: ListTile(
                     onTap: () {
                       penColor = Colors.black;
@@ -222,7 +213,10 @@ class _MyHomePageState extends State<MyHomePage> {
                   ),
                 ),
                 Container(
-                  color: penColor == Colors.red ? Colors.grey.shade100 : null,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    color: penColor == Colors.red ? Colors.grey.shade100 : null,
+                  ),
                   child: ListTile(
                     onTap: () {
                       penColor = Colors.red;
@@ -241,7 +235,11 @@ class _MyHomePageState extends State<MyHomePage> {
                   ),
                 ),
                 Container(
-                  color: penColor == Colors.green ? Colors.grey.shade100 : null,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    color:
+                        penColor == Colors.green ? Colors.grey.shade100 : null,
+                  ),
                   child: ListTile(
                     onTap: () {
                       penColor = Colors.green;
@@ -260,7 +258,11 @@ class _MyHomePageState extends State<MyHomePage> {
                   ),
                 ),
                 Container(
-                  color: penColor == Colors.blue ? Colors.grey.shade100 : null,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    color:
+                        penColor == Colors.blue ? Colors.grey.shade100 : null,
+                  ),
                   child: ListTile(
                     onTap: () {
                       penColor = Colors.blue;
@@ -279,8 +281,11 @@ class _MyHomePageState extends State<MyHomePage> {
                   ),
                 ),
                 Container(
-                  color:
-                      penColor == Colors.yellow ? Colors.grey.shade100 : null,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    color:
+                        penColor == Colors.yellow ? Colors.grey.shade100 : null,
+                  ),
                   child: ListTile(
                     onTap: () {
                       penColor = Colors.yellow;
@@ -299,7 +304,11 @@ class _MyHomePageState extends State<MyHomePage> {
                   ),
                 ),
                 Container(
-                  color: penColor == Colors.brown ? Colors.grey.shade100 : null,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    color:
+                        penColor == Colors.brown ? Colors.grey.shade100 : null,
+                  ),
                   child: ListTile(
                     onTap: () {
                       penColor = Colors.brown;
@@ -335,9 +344,12 @@ class _MyHomePageState extends State<MyHomePage> {
             child: ListBody(
               children: <Widget>[
                 Container(
-                  color: strokeCap == StrokeCap.round
-                      ? Colors.grey.shade100
-                      : null,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    color: strokeCap == StrokeCap.round
+                        ? Colors.grey.shade100
+                        : null,
+                  ),
                   child: ListTile(
                     onTap: () {
                       strokeCap = StrokeCap.round;
@@ -350,8 +362,12 @@ class _MyHomePageState extends State<MyHomePage> {
                   ),
                 ),
                 Container(
-                  color:
-                      strokeCap == StrokeCap.butt ? Colors.grey.shade100 : null,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    color: strokeCap == StrokeCap.butt
+                        ? Colors.grey.shade100
+                        : null,
+                  ),
                   child: ListTile(
                     onTap: () {
                       strokeCap = StrokeCap.butt;
@@ -364,9 +380,12 @@ class _MyHomePageState extends State<MyHomePage> {
                   ),
                 ),
                 Container(
-                  color: strokeCap == StrokeCap.square
-                      ? Colors.grey.shade100
-                      : null,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    color: strokeCap == StrokeCap.square
+                        ? Colors.grey.shade100
+                        : null,
+                  ),
                   child: ListTile(
                     onTap: () {
                       strokeCap = StrokeCap.square;
@@ -407,7 +426,7 @@ class _MyHomePageState extends State<MyHomePage> {
                       Expanded(
                         child: Slider(
                           activeColor: Colors.grey.shade200,
-                          inactiveColor: Colors.black.withOpacity(0.1),
+                          inactiveColor: Colors.black.withValues(alpha: 0.1),
                           value: _currentSliderValue,
                           min: 1,
                           max: 20,

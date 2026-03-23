@@ -3,19 +3,19 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_file_saver/flutter_file_saver.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:image_gallery_saver/image_gallery_saver.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:simple_signature/banner_ad_widget.dart';
 
 class ResultSignature extends StatefulWidget {
   final Uint8List? image;
   const ResultSignature({
-    Key? key,
+    super.key,
     this.image,
-  }) : super(key: key);
+  });
 
   @override
   State<ResultSignature> createState() => _ResultSignatureState();
@@ -32,20 +32,27 @@ class _ResultSignatureState extends State<ResultSignature> {
     Directory tempDir = await getTemporaryDirectory();
     String tempPath = tempDir.path;
 
-    if (await Permission.storage.request().isGranted) {
-      File file = File('$tempPath/signature-$randomNumber.png');
-      await file.writeAsBytes(widget.image!);
-      image = file;
-      setState(() {});
-      if (kDebugMode) print(image!.path);
-      await ImageGallerySaver.saveFile(image!.path);
-      Fluttertoast.showToast(msg: 'Signature successfully saved to galery!');
-    }
+    File file = File('$tempPath/signature-$randomNumber.png');
+    await file.writeAsBytes(widget.image!);
+    image = file;
+    setState(() {});
+    if (kDebugMode) print(image!.path);
+    await FlutterFileSaver().writeFileAsBytes(
+      fileName: "signature-${Random().nextInt(10000)}.png",
+      bytes: widget.image!,
+    );
+
+    Fluttertoast.showToast(msg: 'Signature successfully saved!');
   }
 
   Future shareImage() async {
     // ignore: deprecated_member_use
-    await Share.shareFiles([image!.path], text: 'Here is my signature!');
+    await SharePlus.instance.share(
+      ShareParams(
+          previewThumbnail: XFile(image!.path),
+          files: [XFile(image!.path)],
+          text: 'Here is my signature!'),
+    );
   }
 
   @override
@@ -61,6 +68,7 @@ class _ResultSignatureState extends State<ResultSignature> {
         title: Text('Result',
             style: GoogleFonts.pacifico(color: Colors.black, fontSize: 23)),
         elevation: 0.5,
+        surfaceTintColor: Colors.white,
         centerTitle: true,
         leading: IconButton(
           onPressed: () {
@@ -76,6 +84,14 @@ class _ResultSignatureState extends State<ResultSignature> {
       backgroundColor: Colors.white,
       body: Column(
         children: [
+          SizedBox(
+            height: 18,
+          ),
+          Center(
+            child: BannerAdWidget(
+              placement: BannerPlacement.resultPage,
+            ),
+          ),
           Expanded(
             child: Center(
               child: image != null
@@ -84,7 +100,9 @@ class _ResultSignatureState extends State<ResultSignature> {
                       // child: Image.file(image!),
                       child: Image.file(image!),
                     )
-                  : Container(),
+                  : SizedBox(
+                      child: Text('Kosong'),
+                    ),
             ),
           ),
           GestureDetector(
@@ -98,7 +116,7 @@ class _ResultSignatureState extends State<ResultSignature> {
                   color: Colors.white,
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
+                      color: Colors.black.withValues(alpha: 0.1),
                       spreadRadius: 2,
                       blurRadius: 5,
                       offset: const Offset(0, 1), // changes position of shadow
