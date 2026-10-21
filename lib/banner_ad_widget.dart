@@ -6,6 +6,21 @@ enum StatusAd { initial, loaded }
 
 enum BannerPlacement { resultPage }
 
+const String testBannerAdUnitId = 'ca-app-pub-3940256099942544/6300978111';
+const String resultPageBannerAdUnitId =
+    'ca-app-pub-2465007971338713/1087521621';
+
+String bannerAdUnitId(BannerPlacement? placement, {bool debug = kDebugMode}) {
+  if (debug) return testBannerAdUnitId;
+
+  switch (placement) {
+    case BannerPlacement.resultPage:
+      return resultPageBannerAdUnitId;
+    default:
+      return testBannerAdUnitId;
+  }
+}
+
 class BannerAdWidget extends StatefulWidget {
   final BannerPlacement? placement;
   final EdgeInsetsGeometry? margin;
@@ -32,7 +47,7 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
 
   Future<void> initBanner() async {
     myBanner = BannerAd(
-      adUnitId: getAddUnitId(),
+      adUnitId: bannerAdUnitId(widget.placement),
       size: AdSize.banner,
       request: const AdRequest(),
       listener: listener(),
@@ -55,21 +70,10 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
             width: myBanner!.size.width.toDouble(),
             height: myBanner!.size.height.toDouble(),
             child: ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: AdWidget(ad: myBanner!)),
+              borderRadius: BorderRadius.circular(10),
+              child: AdWidget(ad: myBanner!),
+            ),
           )
         : const SizedBox();
-  }
-
-  String getAddUnitId() {
-    String debugUnitID = 'ca-app-pub-3940256099942544/6300978111';
-    if (kDebugMode) return debugUnitID;
-
-    switch (widget.placement) {
-      case BannerPlacement.resultPage:
-        return 'ca-app-pub-2465007971338713/1087521621';
-      default:
-        return debugUnitID;
-    }
   }
 }
