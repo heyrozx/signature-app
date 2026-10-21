@@ -235,14 +235,6 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
-  flutter_signature_view:
-    dependency: "direct main"
-    description:
-      name: flutter_signature_view
-      sha256: d8dbef59a2aea6a97dd9eab9508a5bb1227efa25fbfc9c8b5099772d375ccbf9
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.0.0"
   flutter_test:
     dependency: "direct dev"
     description: flutter

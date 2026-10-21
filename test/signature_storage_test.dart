@@ -1,78 +1,105 @@
 import 'dart:io';
-import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:simple_signature/signature_storage.dart';
 
-class _FixedRandom implements Random {
-  final int value;
-  _FixedRandom(this.value);
-
-  @override
-  int nextInt(int max) => value % max;
-
-  @override
-  bool nextBool() => false;
-
-  @override
-  double nextDouble() => 0;
-}
-
 void main() {
   group('signatureFileName', () {
-    test('uses the signature-<n>.png pattern', () {
-      expect(signatureFileName(_FixedRandom(42)), 'signature-42.png');
+    test('uses a zero-padded timestamp', () {
+      expect(
+        signatureFileName(DateTime(2026, 1, 2, 3, 4, 5, 6)),
+        'signature-20260102-030405-006.png',
+      );
     });
 
-    test('keeps the number below 10000', () {
-      expect(signatureFileName(_FixedRandom(12345)), 'signature-2345.png');
+    test('differs for saves within the same second', () {
+      final a = signatureFileName(DateTime(2026, 10, 21, 15, 30, 45, 1));
+      final b = signatureFileName(DateTime(2026, 10, 21, 15, 30, 45, 2));
+      expect(a, isNot(b));
     });
 
-    test('produces a valid name without an explicit Random', () {
-      expect(signatureFileName(), matches(RegExp(r'^signature-\d{1,4}\.png$')));
+    test('produces a valid name without an explicit time', () {
+      expect(
+        signatureFileName(),
+        matches(RegExp(r'^signature-\d{8}-\d{6}-\d{3}\.png$')),
+      );
     });
   });
 
   group('writeSignatureToDirectory', () {
-    late Directory dir;
+    late Directory root;
 
     setUp(() async {
-      dir = await Directory.systemTemp.createTemp('signature_test');
+      root = await Directory.systemTemp.createTemp('signature_test');
     });
 
     tearDown(() async {
-      await dir.delete(recursive: true);
+      await root.delete(recursive: true);
     });
 
     test('writes the exact PNG bytes into the directory', () async {
       final bytes = Uint8List.fromList([0x89, 0x50, 0x4E, 0x47, 1, 2, 3]);
+      final now = DateTime(2026, 10, 21, 15, 30, 45, 123);
 
-      final file = await writeSignatureToDirectory(
-        bytes,
-        dir,
-        random: _FixedRandom(7),
-      );
+      final file = await writeSignatureToDirectory(bytes, root, now: now);
 
-      expect(file.path, '${dir.path}/signature-7.png');
-      expect(await file.exists(), isTrue);
+      expect(file.path, '${root.path}/signature-20261021-153045-123.png');
       expect(await file.readAsBytes(), bytes);
     });
 
-    test('overwrites an existing file with the same name', () async {
-      await writeSignatureToDirectory(
-        Uint8List.fromList([1, 1, 1]),
-        dir,
-        random: _FixedRandom(1),
-      );
+    test('creates the directory when it does not exist', () async {
+      final nested = Directory('${root.path}/$signatureCacheFolder');
+
       final file = await writeSignatureToDirectory(
-        Uint8List.fromList([2]),
-        dir,
-        random: _FixedRandom(1),
+        Uint8List.fromList([1]),
+        nested,
       );
 
-      expect(await file.readAsBytes(), [2]);
-      expect(dir.listSync(), hasLength(1));
+      expect(await nested.exists(), isTrue);
+      expect(await file.exists(), isTrue);
+    });
+
+    test('keeps earlier signatures instead of overwriting them', () async {
+      await writeSignatureToDirectory(
+        Uint8List.fromList([1]),
+        root,
+        now: DateTime(2026, 1, 1, 0, 0, 0, 1),
+      );
+      await writeSignatureToDirectory(
+        Uint8List.fromList([2]),
+        root,
+        now: DateTime(2026, 1, 1, 0, 0, 0, 2),
+      );
+
+      expect(root.listSync(), hasLength(2));
+    });
+  });
+
+  group('clearSignatureDirectory', () {
+    test('removes every cached signature', () async {
+      final root = await Directory.systemTemp.createTemp('signature_test');
+      addTearDown(() => root.delete(recursive: true));
+      for (var i = 0; i < 3; i++) {
+        await writeSignatureToDirectory(
+          Uint8List.fromList([i]),
+          root,
+          now: DateTime(2026, 1, 1, 0, 0, 0, i),
+        );
+      }
+
+      await clearSignatureDirectory(root);
+
+      expect(await root.exists(), isTrue);
+      expect(root.listSync(), isEmpty);
+    });
+
+    test('ignores a directory that does not exist', () async {
+      final missing = Directory(
+        '${Directory.systemTemp.path}/does-not-exist-${DateTime.now().microsecondsSinceEpoch}',
+      );
+
+      await expectLater(clearSignatureDirectory(missing), completes);
     });
   });
 }

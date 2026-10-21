@@ -17,7 +17,6 @@ dependencies:
   fluttertoast: ^10.0.2
   path_provider: ^2.1.6
   google_mobile_ads: ^9.1.0
-  flutter_signature_view: ^2.0.0
   cupertino_icons: ^2.0.0
   material_ui: ^1.8.0
 dev_dependencies:

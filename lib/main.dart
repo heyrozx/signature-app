@@ -1,21 +1,24 @@
-import 'dart:io';
+import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_signature_view/flutter_signature_view.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:simple_signature/ad_consent.dart';
 import 'package:simple_signature/pen_options.dart';
 import 'package:simple_signature/result_signature.dart';
+import 'package:simple_signature/signature_pad.dart';
 import 'package:simple_signature/signature_storage.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(statusBarColor: Colors.transparent),
   );
   runApp(const MyApp());
+  unawaited(clearSignatureCache());
+  unawaited(AdConsentManager.instance.gatherConsent());
 }
 
 class MyApp extends StatelessWidget {
@@ -35,7 +38,10 @@ class MyApp extends StatelessWidget {
 }
 
 class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key});
+  /// Consent state used to decide whether to show the privacy options button.
+  final AdConsentManager? adConsentManager;
+
+  const MyHomePage({super.key, this.adConsentManager});
 
   @override
   State<MyHomePage> createState() => _MyHomePageState();
@@ -46,26 +52,70 @@ class _MyHomePageState extends State<MyHomePage> {
   Color penColor = Colors.black;
   StrokeCap strokeCap = StrokeCap.round;
 
-  SignatureView? _signatureView;
+  final SignatureController _signatureController = SignatureController(
+    strokeWidth: defaultStrokeWidth,
+  );
+  final GlobalKey<SignaturePadState> _signaturePadKey = GlobalKey();
 
-  @override
-  void initState() {
-    refreshCanvas();
+  AdConsentManager get _adConsent =>
+      widget.adConsentManager ?? AdConsentManager.instance;
 
-    super.initState();
+  /// Applies the current pen settings to strokes drawn from now on.
+  /// Existing strokes keep the pen they were drawn with.
+  void _applyPen() {
+    final paint = buildPenPaint(
+      color: penColor,
+      strokeCap: strokeCap,
+      strokeWidth: _currentSliderValue,
+    );
+    _signatureController
+      ..color = paint.color
+      ..strokeCap = paint.strokeCap
+      ..strokeWidth = paint.strokeWidth;
   }
 
-  void refreshCanvas() {
-    _signatureView = SignatureView(
-      backgroundColor: Colors.transparent,
-      penStyle: buildPenPaint(
-        color: penColor,
-        strokeCap: strokeCap,
-        strokeWidth: _currentSliderValue,
-      ),
-      onSigned: (data) {
-        if (kDebugMode) print("On change $data");
-      },
+  @override
+  void dispose() {
+    _signatureController.dispose();
+    super.dispose();
+  }
+
+  /// Exports the signature, or shows a toast and returns null when empty.
+  Future<Uint8List?> _exportSignature() async {
+    if (_signatureController.isEmpty) {
+      Fluttertoast.showToast(msg: 'Your signature is empty');
+      return null;
+    }
+    final data = await _signaturePadKey.currentState?.exportPng();
+    if (data == null) {
+      Fluttertoast.showToast(msg: 'Unable to export your signature');
+    }
+    return data;
+  }
+
+  Future<void> _shareSignature() async {
+    final data = await _exportSignature();
+    if (data == null) return;
+    try {
+      final file = await writeSignatureToTemp(data);
+      await SharePlus.instance.share(
+        ShareParams(
+          previewThumbnail: XFile(file.path),
+          files: [XFile(file.path)],
+          text: 'Here is my signature!',
+        ),
+      );
+    } catch (_) {
+      Fluttertoast.showToast(msg: 'Unable to share your signature');
+    }
+  }
+
+  Future<void> _openResult() async {
+    final data = await _exportSignature();
+    if (data == null || !mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (builder) => ResultSignature(image: data)),
     );
   }
 
@@ -81,18 +131,19 @@ class _MyHomePageState extends State<MyHomePage> {
         surfaceTintColor: Colors.white,
         backgroundColor: Colors.white,
         actions: [
-          IconButton(
-            onPressed: () async {
-              Uint8List? data = await _signatureView!.exportBytes();
-              File file = await writeSignatureToTemp(data!);
-              await SharePlus.instance.share(
-                ShareParams(
-                  previewThumbnail: XFile(file.path),
-                  files: [XFile(file.path)],
-                  text: 'Here is my signature!',
-                ),
+          ValueListenableBuilder<bool>(
+            valueListenable: _adConsent.privacyOptionsRequired,
+            builder: (context, required, _) {
+              if (!required) return const SizedBox.shrink();
+              return IconButton(
+                tooltip: 'Privacy settings',
+                onPressed: _adConsent.showPrivacyOptions,
+                icon: const Icon(Icons.privacy_tip, color: Colors.black),
               );
             },
+          ),
+          IconButton(
+            onPressed: _shareSignature,
             icon: const Icon(Icons.share, color: Colors.black),
           ),
           IconButton(
@@ -106,7 +157,12 @@ class _MyHomePageState extends State<MyHomePage> {
       backgroundColor: Colors.white,
       body: Column(
         children: [
-          Expanded(child: Container(child: _signatureView)),
+          Expanded(
+            child: SignaturePad(
+              key: _signaturePadKey,
+              controller: _signatureController,
+            ),
+          ),
           Container(
             margin: const EdgeInsets.all(15),
             padding: const EdgeInsets.symmetric(vertical: 5),
@@ -121,23 +177,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 IconButton(
                   icon: const Icon(Icons.save),
                   color: Colors.white,
-                  onPressed: () async {
-                    if (_signatureView!.isEmpty) {
-                      Fluttertoast.showToast(msg: 'Your signature is empty');
-                      return;
-                    }
-
-                    Uint8List? data = await _signatureView!.exportBytes();
-                    if (!context.mounted) return;
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (builder) {
-                          return ResultSignature(image: data);
-                        },
-                      ),
-                    );
-                  },
+                  onPressed: _openResult,
                 ),
                 IconButton(
                   icon: const Icon(Icons.draw),
@@ -156,9 +196,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 IconButton(
                   icon: const Icon(Icons.clear),
                   color: Colors.white,
-                  onPressed: () async {
-                    _signatureView!.clear();
-                  },
+                  onPressed: _signatureController.clear,
                 ),
               ],
             ),
@@ -207,7 +245,7 @@ class _MyHomePageState extends State<MyHomePage> {
                     ),
                     onTap: () {
                       penColor = option.color;
-                      refreshCanvas();
+                      _applyPen();
                       setState(() {});
                       Navigator.pop(context);
                     },
@@ -235,7 +273,7 @@ class _MyHomePageState extends State<MyHomePage> {
                     title: option.name,
                     onTap: () {
                       strokeCap = option.strokeCap;
-                      refreshCanvas();
+                      _applyPen();
                       setState(() {});
                       Navigator.pop(context);
                     },
@@ -282,7 +320,7 @@ class _MyHomePageState extends State<MyHomePage> {
                               setState(() {});
                               this.setState(() {
                                 _currentSliderValue = value;
-                                refreshCanvas();
+                                _applyPen();
                               });
                             },
                           ),

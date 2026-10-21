@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:simple_signature/banner_ad_widget.dart';
 
 void main() {
@@ -29,5 +30,29 @@ void main() {
       );
       expect(resultPageBannerAdUnitId, isNot(testBannerAdUnitId));
     });
+  });
+
+  testWidgets('BannerAdWidget requests nothing without consent', (
+    tester,
+  ) async {
+    final consent = ValueNotifier(false);
+    addTearDown(consent.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: BannerAdWidget(
+          placement: BannerPlacement.resultPage,
+          canRequestAds: consent,
+        ),
+      ),
+    );
+
+    // No platform channel is mocked, so any ad request would throw here.
+    expect(tester.takeException(), isNull);
+    expect(find.byType(SizedBox), findsWidgets);
+
+    // Removing the widget must also detach its consent listener.
+    await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+    expect(() => consent.value = true, returnsNormally);
   });
 }
