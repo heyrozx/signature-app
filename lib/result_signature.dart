@@ -6,6 +6,7 @@ import 'package:flutter_file_saver/flutter_file_saver.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:simple_signature/app_strings.dart';
 import 'package:simple_signature/banner_ad_widget.dart';
 import 'package:simple_signature/signature_storage.dart';
 
@@ -14,7 +15,7 @@ typedef SaveSignatureFile = Future<String> Function({
   required Uint8List bytes,
 });
 
-typedef ShareSignatureFile = Future<void> Function(File file);
+typedef ShareSignatureFile = Future<void> Function(File file, String text);
 
 enum SaveResult { saved, cancelled, failed }
 
@@ -25,12 +26,12 @@ Future<String> _saveWithFileSaver({
   return FlutterFileSaver().writeFileAsBytes(fileName: fileName, bytes: bytes);
 }
 
-Future<void> _shareWithSharePlus(File file) async {
+Future<void> _shareWithSharePlus(File file, String text) async {
   await SharePlus.instance.share(
     ShareParams(
       previewThumbnail: XFile(file.path),
       files: [XFile(file.path)],
-      text: 'Here is my signature!',
+      text: text,
     ),
   );
 }
@@ -52,19 +53,24 @@ Future<SaveResult> saveSignature(
   }
 }
 
-String saveResultMessage(SaveResult result) {
+String saveResultMessage(SaveResult result, AppStrings strings) {
   switch (result) {
     case SaveResult.saved:
-      return 'Signature successfully saved!';
+      return strings.saved;
     case SaveResult.cancelled:
-      return 'Save cancelled';
+      return strings.saveCancelled;
     case SaveResult.failed:
-      return 'Failed to save signature';
+      return strings.saveFailed;
   }
 }
 
 class ResultSignature extends StatefulWidget {
+  /// The signature on a transparent background.
   final Uint8List image;
+
+  /// The same signature on a white background, for apps that show
+  /// transparency as black.
+  final Uint8List whiteImage;
 
   /// Overridable for tests; defaults to the system "save as" dialog.
   final SaveSignatureFile saveFile;
@@ -81,6 +87,7 @@ class ResultSignature extends StatefulWidget {
   const ResultSignature({
     super.key,
     required this.image,
+    required this.whiteImage,
     this.saveFile = _saveWithFileSaver,
     this.shareFile = _shareWithSharePlus,
     this.writeTempFile = writeSignatureToTemp,
@@ -92,33 +99,35 @@ class ResultSignature extends StatefulWidget {
 }
 
 class _ResultSignatureState extends State<ResultSignature> {
+  bool _whiteBackground = false;
   bool _saving = false;
   bool _sharing = false;
 
-  @override
-  void initState() {
-    super.initState();
-    // Opening this page is the user's "save" action, so start saving at once.
-    WidgetsBinding.instance.addPostFrameCallback((_) => _save());
-  }
+  Uint8List get _selectedImage =>
+      _whiteBackground ? widget.whiteImage : widget.image;
 
   Future<void> _save() async {
     if (_saving) return;
+    final strings = AppStrings.of(context);
     setState(() => _saving = true);
-    final result = await saveSignature(widget.image, saveFile: widget.saveFile);
+    final result = await saveSignature(
+      _selectedImage,
+      saveFile: widget.saveFile,
+    );
     if (!mounted) return;
     setState(() => _saving = false);
-    Fluttertoast.showToast(msg: saveResultMessage(result));
+    Fluttertoast.showToast(msg: saveResultMessage(result, strings));
   }
 
   Future<void> _share() async {
     if (_sharing) return;
+    final strings = AppStrings.of(context);
     setState(() => _sharing = true);
     try {
-      final file = await widget.writeTempFile(widget.image);
-      await widget.shareFile(file);
+      final file = await widget.writeTempFile(_selectedImage);
+      await widget.shareFile(file, strings.shareText);
     } catch (_) {
-      Fluttertoast.showToast(msg: 'Unable to share your signature');
+      Fluttertoast.showToast(msg: strings.shareFailed);
     } finally {
       if (mounted) setState(() => _sharing = false);
     }
@@ -129,6 +138,7 @@ class _ResultSignatureState extends State<ResultSignature> {
     required String label,
     required VoidCallback? onTap,
   }) {
+    final color = onTap == null ? Colors.grey : Colors.black;
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -149,14 +159,11 @@ class _ResultSignatureState extends State<ResultSignature> {
           mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: onTap == null ? Colors.grey : Colors.black),
-            const SizedBox(width: 5),
+            Icon(icon, color: color),
+            const SizedBox(width: 8),
             Text(
-              ' $label',
-              style: TextStyle(
-                color: onTap == null ? Colors.grey : Colors.black,
-                fontWeight: FontWeight.bold,
-              ),
+              label,
+              style: TextStyle(color: color, fontWeight: FontWeight.bold),
             ),
           ],
         ),
@@ -164,12 +171,31 @@ class _ResultSignatureState extends State<ResultSignature> {
     );
   }
 
+  Widget _backgroundChoice(AppStrings strings) {
+    return Wrap(
+      spacing: 8,
+      children: [
+        ChoiceChip(
+          label: Text(strings.transparent),
+          selected: !_whiteBackground,
+          onSelected: (_) => setState(() => _whiteBackground = false),
+        ),
+        ChoiceChip(
+          label: Text(strings.white),
+          selected: _whiteBackground,
+          onSelected: (_) => setState(() => _whiteBackground = true),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final strings = AppStrings.of(context);
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          'Result',
+          strings.resultTitle,
           style: GoogleFonts.pacifico(color: Colors.black, fontSize: 23),
         ),
         elevation: 0.5,
@@ -194,25 +220,33 @@ class _ResultSignatureState extends State<ResultSignature> {
           Expanded(
             child: Center(
               child: Container(
-                padding: const EdgeInsets.all(15),
-                child: Image.memory(widget.image),
+                margin: const EdgeInsets.all(15),
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  // A tinted backdrop makes the transparent version visible.
+                  color: _whiteBackground ? null : Colors.grey.shade200,
+                  border: Border.all(color: Colors.grey.shade300),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Image.memory(_selectedImage, gaplessPlayback: true),
               ),
             ),
           ),
+          _backgroundChoice(strings),
           Padding(
-            padding: const EdgeInsets.only(bottom: 25),
+            padding: const EdgeInsets.only(top: 15, bottom: 25),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 _actionButton(
                   icon: Icons.save,
-                  label: 'Save',
+                  label: strings.save,
                   onTap: _saving ? null : _save,
                 ),
                 const SizedBox(width: 15),
                 _actionButton(
                   icon: Icons.share,
-                  label: 'Share Signature',
+                  label: strings.share,
                   onTap: _sharing ? null : _share,
                 ),
               ],

@@ -46,6 +46,10 @@ void main() {
         inInclusiveRange(minStrokeWidth, maxStrokeWidth),
       );
     });
+
+    test('slider divisions give one step per pixel', () {
+      expect((maxStrokeWidth - minStrokeWidth) / strokeWidthDivisions, 1);
+    });
   });
 
   group('buildPenPaint', () {

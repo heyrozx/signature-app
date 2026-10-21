@@ -31,6 +31,10 @@ const double minStrokeWidth = 1;
 const double maxStrokeWidth = 20;
 const double defaultStrokeWidth = 5;
 
+/// One slider step per whole pixel between [minStrokeWidth] and
+/// [maxStrokeWidth].
+const int strokeWidthDivisions = 19;
+
 Paint buildPenPaint({
   required Color color,
   required StrokeCap strokeCap,

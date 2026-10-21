@@ -20,15 +20,26 @@ class SignatureStroke {
   Paint toPaint() => Paint()
     ..color = color
     ..strokeCap = strokeCap
+    ..strokeJoin = StrokeJoin.round
     ..strokeWidth = strokeWidth
     ..style = PaintingStyle.stroke
     ..isAntiAlias = true;
+
+  /// Area covered by the stroke, including its thickness.
+  Rect? get bounds {
+    if (points.isEmpty) return null;
+    var rect = Rect.fromPoints(points.first, points.first);
+    for (final point in points.skip(1)) {
+      rect = rect.expandToInclude(Rect.fromPoints(point, point));
+    }
+    return rect.inflate(strokeWidth / 2);
+  }
 }
 
 /// Holds the strokes of a signature and the pen used for new strokes.
 ///
 /// Changing the pen only affects strokes drawn afterwards, so existing
-/// strokes are never lost.
+/// strokes are never lost. Starting a stroke and clearing can be undone.
 class SignatureController extends ChangeNotifier {
   SignatureController({
     this.color = Colors.black,
@@ -36,11 +47,17 @@ class SignatureController extends ChangeNotifier {
     this.strokeWidth = 5,
   });
 
+  /// Points closer than this to the previous one are dropped; they add no
+  /// detail and make curves jittery.
+  static const double minPointDistance = 0.5;
+
   Color color;
   StrokeCap strokeCap;
   double strokeWidth;
 
-  final List<SignatureStroke> _strokes = [];
+  List<SignatureStroke> _strokes = [];
+  final List<List<SignatureStroke>> _undoStack = [];
+  final List<List<SignatureStroke>> _redoStack = [];
 
   List<SignatureStroke> get strokes => List.unmodifiable(_strokes);
 
@@ -48,7 +65,17 @@ class SignatureController extends ChangeNotifier {
 
   bool get isNotEmpty => !isEmpty;
 
+  bool get canUndo => _undoStack.isNotEmpty;
+
+  bool get canRedo => _redoStack.isNotEmpty;
+
+  void _recordHistory() {
+    _undoStack.add(List.of(_strokes));
+    _redoStack.clear();
+  }
+
   void startStroke(Offset point) {
+    _recordHistory();
     _strokes.add(
       SignatureStroke(
         color: color,
@@ -65,26 +92,85 @@ class SignatureController extends ChangeNotifier {
       startStroke(point);
       return;
     }
-    _strokes.last.points.add(point);
+    final points = _strokes.last.points;
+    if ((points.last - point).distance < minPointDistance) return;
+    points.add(point);
     notifyListeners();
   }
 
   void clear() {
     if (_strokes.isEmpty) return;
-    _strokes.clear();
+    _recordHistory();
+    _strokes = [];
     notifyListeners();
   }
 
-  /// Renders the signature on a transparent background as PNG bytes.
+  void undo() {
+    if (!canUndo) return;
+    _redoStack.add(_strokes);
+    _strokes = _undoStack.removeLast();
+    notifyListeners();
+  }
+
+  void redo() {
+    if (!canRedo) return;
+    _undoStack.add(_strokes);
+    _strokes = _redoStack.removeLast();
+    notifyListeners();
+  }
+
+  /// Area covered by every stroke, or null when the signature is empty.
+  Rect? get bounds {
+    Rect? result;
+    for (final stroke in _strokes) {
+      final rect = stroke.bounds;
+      if (rect == null) continue;
+      result = result == null ? rect : result.expandToInclude(rect);
+    }
+    return result;
+  }
+
+  /// The part of a [canvasSize] canvas that [toPngBytes] exports: the strokes
+  /// plus [padding] when [crop] is true, otherwise the whole canvas.
+  Rect? exportArea(Size canvasSize, {bool crop = true, double padding = 16}) {
+    final canvas = Offset.zero & canvasSize;
+    if (!crop) return canvas;
+    final strokes = bounds;
+    if (strokes == null) return null;
+    final area = strokes.inflate(padding).intersect(canvas);
+    return area.isEmpty ? null : area;
+  }
+
+  /// Renders the signature as PNG bytes.
   ///
-  /// Returns null when there is nothing to export or [size] is empty.
-  Future<Uint8List?> toPngBytes(Size size) async {
-    if (isEmpty || size.isEmpty) return null;
+  /// The image is cropped to the strokes (see [exportArea]) and drawn on a
+  /// transparent background unless [whiteBackground] is set. [pixelRatio]
+  /// scales the output so it stays sharp on high density screens.
+  /// Returns null when there is nothing to export.
+  Future<Uint8List?> toPngBytes(
+    Size canvasSize, {
+    bool whiteBackground = false,
+    bool crop = true,
+    double padding = 16,
+    double pixelRatio = 1,
+  }) async {
+    if (isEmpty || canvasSize.isEmpty) return null;
+    final area = exportArea(canvasSize, crop: crop, padding: padding);
+    if (area == null) return null;
 
     final recorder = ui.PictureRecorder();
-    paintStrokes(Canvas(recorder), _strokes);
+    final canvas = Canvas(recorder)
+      ..scale(pixelRatio)
+      ..translate(-area.left, -area.top);
+    if (whiteBackground) {
+      canvas.drawRect(area, Paint()..color = Colors.white);
+    }
+    paintStrokes(canvas, _strokes);
     final picture = recorder.endRecording();
-    final image = await picture.toImage(size.width.ceil(), size.height.ceil());
+    final image = await picture.toImage(
+      (area.width * pixelRatio).ceil(),
+      (area.height * pixelRatio).ceil(),
+    );
     try {
       final data = await image.toByteData(format: ui.ImageByteFormat.png);
       return data?.buffer.asUint8List();
@@ -95,33 +181,59 @@ class SignatureController extends ChangeNotifier {
   }
 }
 
+/// Builds a smooth path through [points] using quadratic curves between the
+/// midpoints of consecutive points.
+Path smoothPath(List<Offset> points) {
+  final path = Path();
+  if (points.isEmpty) return path;
+  path.moveTo(points.first.dx, points.first.dy);
+  if (points.length == 2) {
+    path.lineTo(points.last.dx, points.last.dy);
+    return path;
+  }
+  for (var i = 1; i < points.length - 1; i++) {
+    final control = points[i];
+    final end = Offset.lerp(points[i], points[i + 1], 0.5)!;
+    path.quadraticBezierTo(control.dx, control.dy, end.dx, end.dy);
+  }
+  path.lineTo(points.last.dx, points.last.dy);
+  return path;
+}
+
 void paintStrokes(Canvas canvas, List<SignatureStroke> strokes) {
   for (final stroke in strokes) {
     final paint = stroke.toPaint();
     final points = stroke.points;
+    if (points.isEmpty) continue;
     if (points.length == 1) {
       // A tap draws a dot.
       canvas.drawPoints(ui.PointMode.points, points, paint);
       continue;
     }
-    final path = Path()..moveTo(points.first.dx, points.first.dy);
-    for (final point in points.skip(1)) {
-      path.lineTo(point.dx, point.dy);
-    }
-    canvas.drawPath(path, paint);
+    canvas.drawPath(smoothPath(points), paint);
   }
 }
 
 /// Drawing surface bound to a [SignatureController].
+///
+/// Shows a baseline and an optional [hint] to guide the user. Neither is
+/// part of the exported image.
 class SignaturePad extends StatefulWidget {
   final SignatureController controller;
   final Color backgroundColor;
+  final bool showGuide;
+  final String? hint;
 
   const SignaturePad({
     super.key,
     required this.controller,
     this.backgroundColor = Colors.transparent,
+    this.showGuide = true,
+    this.hint,
   });
+
+  /// Baseline position as a fraction of the pad height.
+  static const double guideLineFraction = 0.7;
 
   @override
   State<SignaturePad> createState() => SignaturePadState();
@@ -130,8 +242,15 @@ class SignaturePad extends StatefulWidget {
 class SignaturePadState extends State<SignaturePad> {
   Size _size = Size.zero;
 
-  /// Exports the signature at the size it is currently drawn on screen.
-  Future<Uint8List?> exportPng() => widget.controller.toPngBytes(_size);
+  /// Exports the signature drawn on screen, cropped to its strokes and
+  /// rendered at the device pixel ratio.
+  Future<Uint8List?> exportPng({bool whiteBackground = false}) {
+    return widget.controller.toPngBytes(
+      _size,
+      whiteBackground: whiteBackground,
+      pixelRatio: MediaQuery.maybeDevicePixelRatioOf(context) ?? 1,
+    );
+  }
 
   bool _contains(Offset point) =>
       point.dx >= 0 &&
@@ -154,6 +273,48 @@ class SignaturePadState extends State<SignaturePad> {
     }
   }
 
+  Widget _buildGuide(BoxConstraints constraints) {
+    final lineTop = constraints.maxHeight * SignaturePad.guideLineFraction;
+    return IgnorePointer(
+      child: Stack(
+        children: [
+          Positioned(
+            left: 24,
+            right: 24,
+            top: lineTop,
+            child: Container(height: 1, color: Colors.grey.shade300),
+          ),
+          Positioned(
+            left: 24,
+            top: lineTop - 30,
+            child: Text(
+              '×',
+              style: TextStyle(fontSize: 24, color: Colors.grey.shade400),
+            ),
+          ),
+          if (widget.hint != null)
+            Positioned(
+              left: 24,
+              right: 24,
+              top: lineTop + 8,
+              child: ListenableBuilder(
+                listenable: widget.controller,
+                builder: (context, _) => AnimatedOpacity(
+                  opacity: widget.controller.isEmpty ? 1 : 0,
+                  duration: const Duration(milliseconds: 200),
+                  child: Text(
+                    widget.hint!,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.grey.shade500),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
@@ -167,9 +328,15 @@ class SignaturePadState extends State<SignaturePad> {
           onPanCancel: () => _strokeActive = false,
           child: ColoredBox(
             color: widget.backgroundColor,
-            child: CustomPaint(
-              size: Size.infinite,
-              painter: _SignaturePainter(widget.controller),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                if (widget.showGuide) _buildGuide(constraints),
+                CustomPaint(
+                  size: Size.infinite,
+                  painter: _SignaturePainter(widget.controller),
+                ),
+              ],
             ),
           ),
         );
