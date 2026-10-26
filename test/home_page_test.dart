@@ -295,18 +295,20 @@ void main() {
     expect(step, 1);
   });
 
-  testWidgets('shows the signing guide and hides the hint after drawing', (
+  testWidgets('shows the grey placeholder and hides it after drawing', (
     tester,
   ) async {
     await pumpHome(tester);
-    expect(find.text('Sign above the line'), findsOneWidget);
+    expect(find.byType(SignaturePlaceholder), findsOneWidget);
     expect(find.text('×'), findsOneWidget);
 
     await draw(tester);
     await tester.pumpAndSettle();
 
-    final hint = tester.widget<AnimatedOpacity>(find.byType(AnimatedOpacity));
-    expect(hint.opacity, 0);
+    final placeholder = tester.widget<AnimatedOpacity>(
+      find.byType(AnimatedOpacity),
+    );
+    expect(placeholder.opacity, 0);
   });
 
   testWidgets('Next opens the result with transparent and white images', (
@@ -339,7 +341,6 @@ void main() {
     await pumpHome(tester, locale: const Locale('id'));
 
     expect(find.text('Tanda Tangan'), findsOneWidget);
-    expect(find.text('Tanda tangan di atas garis'), findsOneWidget);
     expect(toolButton(tester, Icons.undo).tooltip, 'Urungkan');
 
     await tester.tap(find.byIcon(Icons.palette));

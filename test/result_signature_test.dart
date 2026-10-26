@@ -211,6 +211,28 @@ void main() {
       await settleToasts(tester);
     });
 
+    testWidgets('preview area is white for both background options', (
+      tester,
+    ) async {
+      await pumpResult(tester);
+      Color? previewColor() {
+        final box = tester.widget<Container>(
+          find
+              .ancestor(
+                of: find.byType(Image),
+                matching: find.byType(Container),
+              )
+              .first,
+        );
+        return (box.decoration as BoxDecoration?)?.color;
+      }
+
+      expect(previewColor(), Colors.white);
+      await tester.tap(find.text('White'));
+      await tester.pump();
+      expect(previewColor(), Colors.white);
+    });
+
     testWidgets('a cancelled save can be retried', (tester) async {
       var attempts = 0;
       await pumpResult(

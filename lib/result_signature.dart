@@ -223,8 +223,7 @@ class _ResultSignatureState extends State<ResultSignature> {
                 margin: const EdgeInsets.all(15),
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  // A tinted backdrop makes the transparent version visible.
-                  color: _whiteBackground ? null : Colors.grey.shade200,
+                  color: Colors.white,
                   border: Border.all(color: Colors.grey.shade300),
                   borderRadius: BorderRadius.circular(8),
                 ),

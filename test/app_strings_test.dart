@@ -10,7 +10,6 @@ void main() {
   List<String Function(AppStrings)> getters() => [
     (s) => s.appTitle,
     (s) => s.resultTitle,
-    (s) => s.signHere,
     (s) => s.emptySignature,
     (s) => s.exportFailed,
     (s) => s.shareFailed,

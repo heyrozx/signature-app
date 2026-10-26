@@ -20,7 +20,6 @@ class AppStrings {
 
   String get appTitle => _t('appTitle');
   String get resultTitle => _t('resultTitle');
-  String get signHere => _t('signHere');
   String get emptySignature => _t('emptySignature');
   String get exportFailed => _t('exportFailed');
   String get shareFailed => _t('shareFailed');
@@ -49,7 +48,6 @@ class AppStrings {
     'en': {
       'appTitle': 'Signature',
       'resultTitle': 'Result',
-      'signHere': 'Sign above the line',
       'emptySignature': 'Your signature is empty',
       'exportFailed': 'Unable to export your signature',
       'shareFailed': 'Unable to share your signature',
@@ -82,7 +80,6 @@ class AppStrings {
     'id': {
       'appTitle': 'Tanda Tangan',
       'resultTitle': 'Hasil',
-      'signHere': 'Tanda tangan di atas garis',
       'emptySignature': 'Tanda tangan masih kosong',
       'exportFailed': 'Gagal memproses tanda tangan',
       'shareFailed': 'Gagal membagikan tanda tangan',

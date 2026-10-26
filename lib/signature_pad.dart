@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -216,20 +217,20 @@ void paintStrokes(Canvas canvas, List<SignatureStroke> strokes) {
 
 /// Drawing surface bound to a [SignatureController].
 ///
-/// Shows a baseline and an optional [hint] to guide the user. Neither is
-/// part of the exported image.
+/// Shows a baseline and, while empty, a grey sample signature to guide the
+/// user. Neither is part of the exported image.
 class SignaturePad extends StatefulWidget {
   final SignatureController controller;
   final Color backgroundColor;
   final bool showGuide;
-  final String? hint;
+  final bool showPlaceholder;
 
   const SignaturePad({
     super.key,
     required this.controller,
-    this.backgroundColor = Colors.transparent,
+    this.backgroundColor = Colors.white,
     this.showGuide = true,
-    this.hint,
+    this.showPlaceholder = true,
   });
 
   /// Baseline position as a fraction of the pad height.
@@ -292,21 +293,18 @@ class SignaturePadState extends State<SignaturePad> {
               style: TextStyle(fontSize: 24, color: Colors.grey.shade400),
             ),
           ),
-          if (widget.hint != null)
+          if (widget.showPlaceholder)
             Positioned(
-              left: 24,
-              right: 24,
-              top: lineTop + 8,
+              left: 48,
+              right: 48,
+              top: lineTop - SignaturePlaceholder.height,
+              height: SignaturePlaceholder.height,
               child: ListenableBuilder(
                 listenable: widget.controller,
                 builder: (context, _) => AnimatedOpacity(
                   opacity: widget.controller.isEmpty ? 1 : 0,
                   duration: const Duration(milliseconds: 200),
-                  child: Text(
-                    widget.hint!,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.grey.shade500),
-                  ),
+                  child: const SignaturePlaceholder(),
                 ),
               ),
             ),
@@ -361,4 +359,65 @@ class _SignaturePainter extends CustomPainter {
   @override
   bool shouldRepaint(_SignaturePainter oldDelegate) =>
       oldDelegate.controller != controller;
+}
+
+/// A light grey sample signature shown on an empty pad.
+class SignaturePlaceholder extends StatelessWidget {
+  const SignaturePlaceholder({super.key});
+
+  static const double height = 72;
+  static const double maxWidth = 240;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: maxWidth),
+        child: CustomPaint(
+          size: const Size(maxWidth, height),
+          painter: _PlaceholderPainter(Colors.grey.shade300),
+        ),
+      ),
+    );
+  }
+}
+
+/// Points of a looping, cursive-looking scribble that fills [size] and
+/// rests on its bottom edge.
+List<Offset> placeholderSignaturePoints(Size size) {
+  const loops = 4;
+  const steps = 160;
+  final points = <Offset>[];
+  for (var i = 0; i <= steps; i++) {
+    final t = i / steps;
+    final angle = t * math.pi * 2 * loops;
+    // Moving forward while circling draws loops; they shrink to the right.
+    final radius = 0.5 - 0.22 * t;
+    final x = 0.04 + 0.82 * t + 0.09 * math.sin(angle);
+    final y = 1 - radius - radius * math.cos(angle) * 0.9;
+    points.add(Offset(x * size.width, y * size.height));
+  }
+  return points;
+}
+
+class _PlaceholderPainter extends CustomPainter {
+  final Color color;
+
+  _PlaceholderPainter(this.color);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..isAntiAlias = true;
+    canvas.drawPath(smoothPath(placeholderSignaturePoints(size)), paint);
+  }
+
+  @override
+  bool shouldRepaint(_PlaceholderPainter oldDelegate) =>
+      oldDelegate.color != color;
 }

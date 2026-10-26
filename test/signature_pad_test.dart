@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -341,11 +342,23 @@ void main() {
     });
   });
 
+  group('placeholderSignaturePoints', () {
+    test('stays inside the given size and spans most of its width', () {
+      const size = Size(240, 72);
+      final points = placeholderSignaturePoints(size);
+      final area = (Offset.zero & size).inflate(0.5);
+
+      expect(points.every(area.contains), isTrue);
+      final xs = points.map((p) => p.dx);
+      expect(xs.reduce(math.max) - xs.reduce(math.min), greaterThan(180));
+    });
+  });
+
   group('SignaturePad', () {
     Future<SignatureController> pumpPad(
       WidgetTester tester, {
-      String? hint,
       bool showGuide = true,
+      bool showPlaceholder = true,
     }) async {
       final controller = SignatureController();
       addTearDown(controller.dispose);
@@ -358,8 +371,8 @@ void main() {
                 height: 200,
                 child: SignaturePad(
                   controller: controller,
-                  hint: hint,
                   showGuide: showGuide,
+                  showPlaceholder: showPlaceholder,
                 ),
               ),
             ),
@@ -410,12 +423,22 @@ void main() {
       expect(allPoints.every(bounds.inflate(0.01).contains), isTrue);
     });
 
-    testWidgets('hint shows only while the pad is empty', (tester) async {
-      final controller = await pumpPad(tester, hint: 'Sign above the line');
+    testWidgets('grey placeholder shows only while the pad is empty', (
+      tester,
+    ) async {
+      final controller = await pumpPad(tester);
       double opacity() =>
           tester.widget<AnimatedOpacity>(find.byType(AnimatedOpacity)).opacity;
 
-      expect(find.text('Sign above the line'), findsOneWidget);
+      expect(find.byType(SignaturePlaceholder), findsOneWidget);
+      // No text hint, only the drawn placeholder and the × mark.
+      expect(
+        find.descendant(
+          of: find.byType(SignaturePad),
+          matching: find.byType(Text),
+        ),
+        findsOneWidget,
+      );
       expect(opacity(), 1);
 
       await tester.drag(find.byType(SignaturePad), const Offset(100, 0));
@@ -428,9 +451,46 @@ void main() {
     });
 
     testWidgets('guide can be turned off', (tester) async {
-      await pumpPad(tester, hint: 'hint', showGuide: false);
+      await pumpPad(tester, showGuide: false);
       expect(find.text('×'), findsNothing);
-      expect(find.text('hint'), findsNothing);
+      expect(find.byType(SignaturePlaceholder), findsNothing);
+    });
+
+    testWidgets('placeholder can be turned off on its own', (tester) async {
+      await pumpPad(tester, showPlaceholder: false);
+      expect(find.text('×'), findsOneWidget);
+      expect(find.byType(SignaturePlaceholder), findsNothing);
+    });
+
+    testWidgets('drawing area has a white background', (tester) async {
+      await pumpPad(tester);
+      final box = tester.widget<ColoredBox>(
+        find
+            .descendant(
+              of: find.byType(SignaturePad),
+              matching: find.byType(ColoredBox),
+            )
+            .first,
+      );
+      expect(box.color, Colors.white);
+    });
+
+    testWidgets('placeholder is never part of the exported image', (
+      tester,
+    ) async {
+      final controller = await pumpPad(tester);
+      // A tiny dot far from where the placeholder is drawn.
+      controller
+        ..startStroke(const Offset(5, 5))
+        ..extendStroke(const Offset(6, 5));
+      await tester.pump();
+
+      final state = tester.state<SignaturePadState>(find.byType(SignaturePad));
+      final image = await _render(tester, state.exportPng);
+
+      // Cropped to the dot only, not stretched to include the placeholder.
+      expect(image.height, lessThan(30 * tester.view.devicePixelRatio));
+      image.dispose();
     });
 
     testWidgets('exportPng crops and uses the device pixel ratio', (

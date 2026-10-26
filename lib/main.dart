@@ -190,7 +190,6 @@ class _MyHomePageState extends State<MyHomePage> {
             child: SignaturePad(
               key: _signaturePadKey,
               controller: _signatureController,
-              hint: _strings.signHere,
             ),
           ),
           Container(
