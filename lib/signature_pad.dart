@@ -217,24 +217,19 @@ void paintStrokes(Canvas canvas, List<SignatureStroke> strokes) {
 
 /// Drawing surface bound to a [SignatureController].
 ///
-/// Shows a baseline and, while empty, a grey sample signature to guide the
-/// user. Neither is part of the exported image.
+/// While empty it shows a grey sample signature in the middle to invite the
+/// user to sign; the sample is never part of the exported image.
 class SignaturePad extends StatefulWidget {
   final SignatureController controller;
   final Color backgroundColor;
-  final bool showGuide;
   final bool showPlaceholder;
 
   const SignaturePad({
     super.key,
     required this.controller,
     this.backgroundColor = Colors.white,
-    this.showGuide = true,
     this.showPlaceholder = true,
   });
-
-  /// Baseline position as a fraction of the pad height.
-  static const double guideLineFraction = 0.7;
 
   @override
   State<SignaturePad> createState() => SignaturePadState();
@@ -274,41 +269,23 @@ class SignaturePadState extends State<SignaturePad> {
     }
   }
 
-  Widget _buildGuide(BoxConstraints constraints) {
-    final lineTop = constraints.maxHeight * SignaturePad.guideLineFraction;
+  Widget _buildPlaceholder() {
     return IgnorePointer(
-      child: Stack(
-        children: [
-          Positioned(
-            left: 24,
-            right: 24,
-            top: lineTop,
-            child: Container(height: 1, color: Colors.grey.shade300),
-          ),
-          Positioned(
-            left: 24,
-            top: lineTop - 30,
-            child: Text(
-              '×',
-              style: TextStyle(fontSize: 24, color: Colors.grey.shade400),
-            ),
-          ),
-          if (widget.showPlaceholder)
-            Positioned(
-              left: 48,
-              right: 48,
-              top: lineTop - SignaturePlaceholder.height,
-              height: SignaturePlaceholder.height,
-              child: ListenableBuilder(
-                listenable: widget.controller,
-                builder: (context, _) => AnimatedOpacity(
-                  opacity: widget.controller.isEmpty ? 1 : 0,
-                  duration: const Duration(milliseconds: 200),
-                  child: const SignaturePlaceholder(),
-                ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 48),
+        child: Center(
+          child: SizedBox(
+            height: SignaturePlaceholder.height,
+            child: ListenableBuilder(
+              listenable: widget.controller,
+              builder: (context, _) => AnimatedOpacity(
+                opacity: widget.controller.isEmpty ? 1 : 0,
+                duration: const Duration(milliseconds: 200),
+                child: const SignaturePlaceholder(),
               ),
             ),
-        ],
+          ),
+        ),
       ),
     );
   }
@@ -329,7 +306,7 @@ class SignaturePadState extends State<SignaturePad> {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                if (widget.showGuide) _buildGuide(constraints),
+                if (widget.showPlaceholder) _buildPlaceholder(),
                 CustomPaint(
                   size: Size.infinite,
                   painter: _SignaturePainter(widget.controller),

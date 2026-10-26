@@ -300,7 +300,7 @@ void main() {
   ) async {
     await pumpHome(tester);
     expect(find.byType(SignaturePlaceholder), findsOneWidget);
-    expect(find.text('×'), findsOneWidget);
+    expect(find.text('×'), findsNothing);
 
     await draw(tester);
     await tester.pumpAndSettle();

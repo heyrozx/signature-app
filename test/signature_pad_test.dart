@@ -357,7 +357,6 @@ void main() {
   group('SignaturePad', () {
     Future<SignatureController> pumpPad(
       WidgetTester tester, {
-      bool showGuide = true,
       bool showPlaceholder = true,
     }) async {
       final controller = SignatureController();
@@ -371,7 +370,6 @@ void main() {
                 height: 200,
                 child: SignaturePad(
                   controller: controller,
-                  showGuide: showGuide,
                   showPlaceholder: showPlaceholder,
                 ),
               ),
@@ -431,13 +429,25 @@ void main() {
           tester.widget<AnimatedOpacity>(find.byType(AnimatedOpacity)).opacity;
 
       expect(find.byType(SignaturePlaceholder), findsOneWidget);
-      // No text hint, only the drawn placeholder and the × mark.
+      // The area stays clean: no text, line or × mark, only the placeholder.
       expect(
         find.descendant(
           of: find.byType(SignaturePad),
           matching: find.byType(Text),
         ),
-        findsOneWidget,
+        findsNothing,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(SignaturePad),
+          matching: find.byType(Container),
+        ),
+        findsNothing,
+      );
+      // Centered in the pad.
+      expect(
+        tester.getCenter(find.byType(SignaturePlaceholder)),
+        tester.getCenter(find.byType(SignaturePad)),
       );
       expect(opacity(), 1);
 
@@ -450,15 +460,8 @@ void main() {
       expect(opacity(), 1);
     });
 
-    testWidgets('guide can be turned off', (tester) async {
-      await pumpPad(tester, showGuide: false);
-      expect(find.text('×'), findsNothing);
-      expect(find.byType(SignaturePlaceholder), findsNothing);
-    });
-
-    testWidgets('placeholder can be turned off on its own', (tester) async {
+    testWidgets('placeholder can be turned off', (tester) async {
       await pumpPad(tester, showPlaceholder: false);
-      expect(find.text('×'), findsOneWidget);
       expect(find.byType(SignaturePlaceholder), findsNothing);
     });
 
